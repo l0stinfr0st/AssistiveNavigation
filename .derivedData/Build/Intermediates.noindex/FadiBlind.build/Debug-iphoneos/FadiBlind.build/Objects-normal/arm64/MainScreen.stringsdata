@@ -1,0 +1,72 @@
+{
+  "source": "/Users/kareemhijazi/Desktop/Fadi/FadiBlind/FadiBlind/Main/MainScreen.swift",
+  "tables": {
+    "Localizable": [
+      {
+        "comment": "",
+        "key": "Home",
+        "location": {
+          "startingColumn": 23,
+          "startingLine": 12
+        }
+      },
+      {
+        "comment": "",
+        "key": "Reports",
+        "location": {
+          "startingColumn": 23,
+          "startingLine": 20
+        }
+      },
+      {
+        "comment": "",
+        "key": "History",
+        "location": {
+          "startingColumn": 23,
+          "startingLine": 28
+        }
+      },
+      {
+        "comment": "",
+        "key": "Assistive Navigation",
+        "location": {
+          "startingColumn": 22,
+          "startingLine": 48
+        }
+      },
+      {
+        "comment": "",
+        "key": "Start Navigation",
+        "location": {
+          "startingColumn": 24,
+          "startingLine": 53
+        }
+      },
+      {
+        "comment": "",
+        "key": "View Hazard Map",
+        "location": {
+          "startingColumn": 24,
+          "startingLine": 58
+        }
+      },
+      {
+        "comment": "",
+        "key": "Report Hazard",
+        "location": {
+          "startingColumn": 24,
+          "startingLine": 63
+        }
+      },
+      {
+        "comment": "",
+        "key": "Settings",
+        "location": {
+          "startingColumn": 37,
+          "startingLine": 78
+        }
+      }
+    ]
+  },
+  "version": 1
+}

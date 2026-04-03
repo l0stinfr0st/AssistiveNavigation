@@ -1,0 +1,64 @@
+{
+  "source": "/Users/kareemhijazi/Desktop/Fadi/FadiBlind/FadiBlind/Main/RegisterScreen.swift",
+  "tables": {
+    "Localizable": [
+      {
+        "comment": "",
+        "key": "Register",
+        "location": {
+          "startingColumn": 22,
+          "startingLine": 16
+        }
+      },
+      {
+        "comment": "",
+        "key": "Register",
+        "location": {
+          "startingColumn": 24,
+          "startingLine": 41
+        }
+      },
+      {
+        "comment": "",
+        "key": "Have an account?",
+        "location": {
+          "startingColumn": 24,
+          "startingLine": 50
+        }
+      },
+      {
+        "comment": "",
+        "key": "Username",
+        "location": {
+          "startingColumn": 31,
+          "startingLine": 22
+        }
+      },
+      {
+        "comment": "",
+        "key": "Email",
+        "location": {
+          "startingColumn": 31,
+          "startingLine": 23
+        }
+      },
+      {
+        "comment": "",
+        "key": "Password",
+        "location": {
+          "startingColumn": 33,
+          "startingLine": 26
+        }
+      },
+      {
+        "comment": "",
+        "key": "Confirm password",
+        "location": {
+          "startingColumn": 33,
+          "startingLine": 27
+        }
+      }
+    ]
+  },
+  "version": 1
+}

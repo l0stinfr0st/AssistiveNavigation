@@ -1,0 +1,80 @@
+{
+  "source": "/Users/kareemhijazi/Desktop/Fadi/FadiBlind/FadiBlind/Main/HistoryView.swift",
+  "tables": {
+    "Localizable": [
+      {
+        "comment": "",
+        "key": "History",
+        "location": {
+          "startingColumn": 26,
+          "startingLine": 58
+        }
+      },
+      {
+        "comment": "",
+        "key": "My hazard reports",
+        "location": {
+          "startingColumn": 21,
+          "startingLine": 11
+        }
+      },
+      {
+        "comment": "",
+        "key": "Navigation activity",
+        "location": {
+          "startingColumn": 21,
+          "startingLine": 32
+        }
+      },
+      {
+        "comment": "",
+        "key": "You have not submitted any reports yet.",
+        "location": {
+          "startingColumn": 26,
+          "startingLine": 14
+        }
+      },
+      {
+        "comment": "",
+        "key": "No saved navigation sessions yet.",
+        "location": {
+          "startingColumn": 26,
+          "startingLine": 35
+        }
+      },
+      {
+        "comment": "",
+        "key": "Session — %@",
+        "location": {
+          "startingColumn": 34,
+          "startingLine": 40
+        }
+      },
+      {
+        "comment": "",
+        "key": "Started %@",
+        "location": {
+          "startingColumn": 34,
+          "startingLine": 42
+        }
+      },
+      {
+        "comment": "",
+        "key": "Ended %@",
+        "location": {
+          "startingColumn": 38,
+          "startingLine": 45
+        }
+      },
+      {
+        "comment": "",
+        "key": "Hazard reports during session: %lld",
+        "location": {
+          "startingColumn": 34,
+          "startingLine": 49
+        }
+      }
+    ]
+  },
+  "version": 1
+}

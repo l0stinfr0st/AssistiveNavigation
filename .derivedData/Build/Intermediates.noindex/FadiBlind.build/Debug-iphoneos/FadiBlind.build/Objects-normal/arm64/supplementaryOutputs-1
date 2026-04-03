@@ -1,0 +1,18 @@
+"/Users/kareemhijazi/Desktop/Fadi/FadiBlind/FadiBlind/Main/AppViewModel.swift":
+  dependencies: "/Users/kareemhijazi/Desktop/Fadi/FadiBlind/.derivedData/Build/Intermediates.noindex/FadiBlind.build/Debug-iphoneos/FadiBlind.build/Objects-normal/arm64/AppViewModel.d"
+  object: "/Users/kareemhijazi/Desktop/Fadi/FadiBlind/.derivedData/Build/Intermediates.noindex/FadiBlind.build/Debug-iphoneos/FadiBlind.build/Objects-normal/arm64/AppViewModel.o"
+  const-values: "/Users/kareemhijazi/Desktop/Fadi/FadiBlind/.derivedData/Build/Intermediates.noindex/FadiBlind.build/Debug-iphoneos/FadiBlind.build/Objects-normal/arm64/AppViewModel.swiftconstvalues"
+  swift-dependencies: "/Users/kareemhijazi/Desktop/Fadi/FadiBlind/.derivedData/Build/Intermediates.noindex/FadiBlind.build/Debug-iphoneos/FadiBlind.build/Objects-normal/arm64/AppViewModel.swiftdeps"
+  diagnostics: "/Users/kareemhijazi/Desktop/Fadi/FadiBlind/.derivedData/Build/Intermediates.noindex/FadiBlind.build/Debug-iphoneos/FadiBlind.build/Objects-normal/arm64/AppViewModel.dia"
+"/Users/kareemhijazi/Desktop/Fadi/FadiBlind/FadiBlind/Main/FadiBlindApp.swift":
+  diagnostics: "/Users/kareemhijazi/Desktop/Fadi/FadiBlind/.derivedData/Build/Intermediates.noindex/FadiBlind.build/Debug-iphoneos/FadiBlind.build/Objects-normal/arm64/FadiBlindApp.dia"
+  object: "/Users/kareemhijazi/Desktop/Fadi/FadiBlind/.derivedData/Build/Intermediates.noindex/FadiBlind.build/Debug-iphoneos/FadiBlind.build/Objects-normal/arm64/FadiBlindApp.o"
+  dependencies: "/Users/kareemhijazi/Desktop/Fadi/FadiBlind/.derivedData/Build/Intermediates.noindex/FadiBlind.build/Debug-iphoneos/FadiBlind.build/Objects-normal/arm64/FadiBlindApp.d"
+  const-values: "/Users/kareemhijazi/Desktop/Fadi/FadiBlind/.derivedData/Build/Intermediates.noindex/FadiBlind.build/Debug-iphoneos/FadiBlind.build/Objects-normal/arm64/FadiBlindApp.swiftconstvalues"
+  swift-dependencies: "/Users/kareemhijazi/Desktop/Fadi/FadiBlind/.derivedData/Build/Intermediates.noindex/FadiBlind.build/Debug-iphoneos/FadiBlind.build/Objects-normal/arm64/FadiBlindApp.swiftdeps"
+"/Users/kareemhijazi/Desktop/Fadi/FadiBlind/FadiBlind/Main/HistoryView.swift":
+  dependencies: "/Users/kareemhijazi/Desktop/Fadi/FadiBlind/.derivedData/Build/Intermediates.noindex/FadiBlind.build/Debug-iphoneos/FadiBlind.build/Objects-normal/arm64/HistoryView.d"
+  const-values: "/Users/kareemhijazi/Desktop/Fadi/FadiBlind/.derivedData/Build/Intermediates.noindex/FadiBlind.build/Debug-iphoneos/FadiBlind.build/Objects-normal/arm64/HistoryView.swiftconstvalues"
+  swift-dependencies: "/Users/kareemhijazi/Desktop/Fadi/FadiBlind/.derivedData/Build/Intermediates.noindex/FadiBlind.build/Debug-iphoneos/FadiBlind.build/Objects-normal/arm64/HistoryView.swiftdeps"
+  diagnostics: "/Users/kareemhijazi/Desktop/Fadi/FadiBlind/.derivedData/Build/Intermediates.noindex/FadiBlind.build/Debug-iphoneos/FadiBlind.build/Objects-normal/arm64/HistoryView.dia"
+  object: "/Users/kareemhijazi/Desktop/Fadi/FadiBlind/.derivedData/Build/Intermediates.noindex/FadiBlind.build/Debug-iphoneos/FadiBlind.build/Objects-normal/arm64/HistoryView.o"

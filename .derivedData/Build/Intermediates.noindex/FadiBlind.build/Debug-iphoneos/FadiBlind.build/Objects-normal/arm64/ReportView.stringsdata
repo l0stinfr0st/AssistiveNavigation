@@ -1,0 +1,88 @@
+{
+  "source": "/Users/kareemhijazi/Desktop/Fadi/FadiBlind/FadiBlind/Main/ReportView.swift",
+  "tables": {
+    "Localizable": [
+      {
+        "comment": "",
+        "key": "Report hazard",
+        "location": {
+          "startingColumn": 30,
+          "startingLine": 68
+        }
+      },
+      {
+        "comment": "",
+        "key": "Hazard type",
+        "location": {
+          "startingColumn": 25,
+          "startingLine": 26
+        }
+      },
+      {
+        "comment": "",
+        "key": "Description",
+        "location": {
+          "startingColumn": 25,
+          "startingLine": 35
+        }
+      },
+      {
+        "comment": "",
+        "key": "Type",
+        "location": {
+          "startingColumn": 28,
+          "startingLine": 27
+        }
+      },
+      {
+        "comment": "",
+        "key": "Choose the type of obstacle you are reporting",
+        "location": {
+          "startingColumn": 40,
+          "startingLine": 32
+        }
+      },
+      {
+        "comment": "",
+        "key": "Describe what you encountered",
+        "location": {
+          "startingColumn": 31,
+          "startingLine": 36
+        }
+      },
+      {
+        "comment": "",
+        "key": "Stop voice input",
+        "location": {
+          "startingColumn": 53,
+          "startingLine": 43
+        }
+      },
+      {
+        "comment": "",
+        "key": "Speak description",
+        "location": {
+          "startingColumn": 74,
+          "startingLine": 43
+        }
+      },
+      {
+        "comment": "",
+        "key": "Submit Report",
+        "location": {
+          "startingColumn": 28,
+          "startingLine": 57
+        }
+      },
+      {
+        "comment": "",
+        "key": "Cancel",
+        "location": {
+          "startingColumn": 28,
+          "startingLine": 62
+        }
+      }
+    ]
+  },
+  "version": 1
+}

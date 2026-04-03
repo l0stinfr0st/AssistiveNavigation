@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>Location is used for navigation assistance, placing hazard reports on the map, and summarizing nearby community hazards before you start walking.</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>The microphone is used when you speak a hazard description on the report screen.</string>
+	<key>NSSpeechRecognitionUsageDescription</key>
+	<string>Speech recognition converts what you say into text for hazard reports.</string>
+</dict>
+</plist>

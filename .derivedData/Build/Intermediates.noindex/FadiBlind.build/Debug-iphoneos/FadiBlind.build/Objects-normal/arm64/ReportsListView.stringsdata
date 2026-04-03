@@ -1,0 +1,40 @@
+{
+  "source": "/Users/kareemhijazi/Desktop/Fadi/FadiBlind/FadiBlind/Main/ReportsListView.swift",
+  "tables": {
+    "Localizable": [
+      {
+        "comment": "",
+        "key": "Reports",
+        "location": {
+          "startingColumn": 26,
+          "startingLine": 38
+        }
+      },
+      {
+        "comment": "",
+        "key": "Community hazards will appear here after users submit them.",
+        "location": {
+          "startingColumn": 39,
+          "startingLine": 13
+        }
+      },
+      {
+        "comment": "",
+        "key": "No reports yet",
+        "location": {
+          "startingColumn": 21,
+          "startingLine": 11
+        }
+      },
+      {
+        "comment": "",
+        "key": "Reported by %@",
+        "location": {
+          "startingColumn": 30,
+          "startingLine": 26
+        }
+      }
+    ]
+  },
+  "version": 1
+}
