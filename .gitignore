@@ -1,0 +1,12 @@
+# Do not commit real Supabase keys; copy from SupabaseConfig.example.plist
+AssistNav/SupabaseConfig.plist
+.DS_Store
+.derivedData/
+.derivedData-codex/
+DerivedData/
+**/__pycache__/
+*.pyc
+.ipynb_checkpoints/
+*.xcuserstate
+**/xcuserdata/
+AssistNav/system.ipynb
