@@ -110,18 +110,6 @@ private struct UserSettingsForm: View {
                         .foregroundStyle(.secondary)
                 }
                 Slider(value: $streaming.maxFPS, in: 1...60, step: 1)
-
-                Toggle("Include RGB (JPEG)", isOn: $streaming.includeRGB)
-
-                if streaming.includeRGB {
-                    HStack {
-                        Text("JPEG quality")
-                        Spacer()
-                        Text("\(streaming.jpegQuality, format: .number.precision(.fractionLength(2)))")
-                            .foregroundStyle(.secondary)
-                    }
-                    Slider(value: $streaming.jpegQuality, in: 0.1...0.9, step: 0.05)
-                }
             }
 
             Section {

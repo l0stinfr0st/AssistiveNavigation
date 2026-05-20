@@ -38,6 +38,7 @@ class ParsedFrame:
     calibration_height: int
     timestamp: float
     intrinsics: tuple[float, ...]
+    camera_transform: tuple[float, ...] | None
     depth_bytes: bytes
     conf_bytes: bytes
     jpeg_bytes: bytes
@@ -63,6 +64,12 @@ def parse_payload(payload: bytes) -> ParsedFrame:
     off += 8
     intrinsics = struct.unpack_from("<9f", payload, off)
     off += 36
+    if version >= 3:
+        raw_camera_transform = struct.unpack_from("<16f", payload, off)
+        camera_transform = raw_camera_transform if (flags & (1 << 2)) else None
+        off += 64
+    else:
+        camera_transform = None
     (depth_n, conf_n, jpeg_n) = struct.unpack_from("<III", payload, off)
     off += 12
 
@@ -86,6 +93,7 @@ def parse_payload(payload: bytes) -> ParsedFrame:
         calibration_height=calh,
         timestamp=ts,
         intrinsics=intrinsics,
+        camera_transform=camera_transform,
         depth_bytes=depth_bytes,
         conf_bytes=conf_bytes,
         jpeg_bytes=jpeg_bytes,
@@ -233,7 +241,8 @@ def main():
 
             print(
                 f"frame={frame_count} depth={frame.depth_width}x{frame.depth_height} "
-                f"conf={len(frame.conf_bytes)}B jpeg={len(frame.jpeg_bytes)}B ts={frame.timestamp:.3f}{stats}"
+                f"conf={len(frame.conf_bytes)}B jpeg={len(frame.jpeg_bytes)}B "
+                f"pose={frame.camera_transform is not None} ts={frame.timestamp:.3f}{stats}"
             )
 
         if depth is not None and cv2 is not None and (args.export_dir or args.video):

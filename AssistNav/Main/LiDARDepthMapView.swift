@@ -90,12 +90,6 @@ struct LiDARDepthMapView: View {
         .onChange(of: streaming.maxFPS) { _, _ in
             model.updateStreaming(settings: streaming, force: false)
         }
-        .onChange(of: streaming.includeRGB) { _, _ in
-            model.updateStreaming(settings: streaming, force: false)
-        }
-        .onChange(of: streaming.jpegQuality) { _, _ in
-            model.updateStreaming(settings: streaming, force: false)
-        }
         .sheet(item: $model.exportedFile) { exported in
             ShareSheet(activityItems: [exported.url])
         }
@@ -187,11 +181,10 @@ final class LiDARDepthModel: NSObject, ObservableObject {
     @Published var exportStatusLine = "Export idle"
     @Published var exportedFile: DepthExportedFile?
 
-    private let capture = LiDARDualCameraCapture()
+    private let capture = ARLiDARFrameCapture()
     private let ciContext = CIContext(options: [.cacheIntermediates: false])
     private let targetDisplaySize = CGSize(width: 720, height: 960)
     private let streamer = DepthFrameStreamer()
-    private let rgbStreamer = RGBFrameStreamer()
     private let recorder = DepthFileRecorder()
     private let fixedMinDepthMeters: Float = 0.20
 
@@ -200,37 +193,43 @@ final class LiDARDepthModel: NSObject, ObservableObject {
 
     private var latestDepth: CVPixelBuffer?
     private var latestConfidence: CVPixelBuffer?
-    private var latestRGB: CVPixelBuffer?
-    private var latestRGBTimestamp: TimeInterval?
     private var latestIntrinsics: simd_float3x3?
     private var latestImageResolution: CGSize?
+    private var latestCameraTransform: simd_float4x4?
     private var latestTimestamp: TimeInterval?
-    private var rgbSourceLabel = "0.5x"
+    private var latestTrackingState = "-"
+    private var latestPlaneAnchorCount = 0
+    private var latestFloorPlaneFound = false
+    private var latestFloorRemovedPixelCount = 0
 
     private var streamingEnabled = false
     private var streamHost = ""
     private var streamPort = 0
-    private var streamRGBPort = 0
-    private var streamMaxFPS: Double = 30
-    private var streamIncludeRGB = false
-    private var streamJpegQuality: Double = 0.55
+    private var streamMaxFPS: Double = 60
 
     func start() {
         guard !running else { return }
         running = true
-        rgbSourceLabel = "0.5x"
-        statusLine = "Starting LiDAR + ultra-wide capture..."
+        statusLine = "Starting ARKit LiDAR + pose capture..."
 
         capture.onStatusChange = { [weak self] status in
             Task { @MainActor in
                 guard let self, self.running else { return }
                 switch status {
-                case "multicam-running":
-                    self.statusLine = "LiDAR depth + ultra-wide RGB are running"
+                case "arkit-running-lidar":
+                    self.statusLine = "ARKit LiDAR depth + pose are running"
                 case "camera-denied":
-                    self.statusLine = "Camera access is required for LiDAR and RGB capture."
-                case "multicam-unsupported":
-                    self.statusLine = "This device does not support simultaneous LiDAR and ultra-wide capture."
+                    self.statusLine = "Camera access is required for LiDAR capture."
+                case "arkit-world-tracking-unsupported":
+                    self.statusLine = "This device does not support ARKit world tracking."
+                case "arkit-scene-depth-unsupported":
+                    self.statusLine = "This device does not support ARKit LiDAR scene depth."
+                case "arkit-interrupted":
+                    self.statusLine = "ARKit capture was interrupted."
+                case "arkit-interruption-ended":
+                    self.statusLine = "Restarting ARKit capture..."
+                case let tracking where tracking.hasPrefix("arkit-tracking-"):
+                    self.latestTrackingState = String(tracking.dropFirst("arkit-tracking-".count))
                 default:
                     self.statusLine = "Capture setup issue: \(status)"
                 }
@@ -241,35 +240,25 @@ final class LiDARDepthModel: NSObject, ObservableObject {
             Task { @MainActor in
                 guard let self, self.running else { return }
                 self.latestDepth = frame.depthMap
+                self.latestConfidence = frame.confidenceMap
                 self.latestIntrinsics = frame.intrinsics
                 self.latestImageResolution = frame.referenceResolution
+                self.latestCameraTransform = frame.cameraTransform
                 self.latestTimestamp = frame.timestamp
+                self.latestTrackingState = frame.trackingState
+                self.latestPlaneAnchorCount = frame.planeAnchors.count
+                self.latestFloorPlaneFound = frame.floorPlaneFound
+                self.latestFloorRemovedPixelCount = frame.floorRemovedPixelCount
                 if self.isExporting {
-                    let exportRGB: CVPixelBuffer?
-                    if let latestRGB = self.latestRGB,
-                       let latestRGBTimestamp = self.latestRGBTimestamp,
-                       abs(latestRGBTimestamp - frame.timestamp) <= 0.05 {
-                        exportRGB = latestRGB
-                    } else {
-                        exportRGB = nil
-                    }
                     self.recorder.appendFrame(
                         depth: frame.depthMap,
-                        confidence: nil,
-                        rgb: exportRGB,
+                        confidence: frame.confidenceMap,
                         intrinsics: frame.intrinsics,
                         referenceResolution: frame.referenceResolution,
+                        cameraTransform: frame.cameraTransform,
                         timestamp: frame.timestamp
                     )
                 }
-            }
-        }
-
-        capture.onUltraWideFrame = { [weak self] pixelBuffer, timestamp in
-            Task { @MainActor in
-                guard let self, self.running else { return }
-                self.latestRGB = pixelBuffer
-                self.latestRGBTimestamp = timestamp
             }
         }
 
@@ -288,42 +277,38 @@ final class LiDARDepthModel: NSObject, ObservableObject {
 
         latestDepth = nil
         latestConfidence = nil
-        latestRGB = nil
-        latestRGBTimestamp = nil
         latestIntrinsics = nil
         latestImageResolution = nil
+        latestCameraTransform = nil
         latestTimestamp = nil
-        rgbSourceLabel = "0.5x"
+        latestTrackingState = "-"
+        latestPlaneAnchorCount = 0
+        latestFloorPlaneFound = false
+        latestFloorRemovedPixelCount = 0
 
         capture.stop()
         streamer.setEnabled(false, host: streamHost, port: streamPort)
-        rgbStreamer.setEnabled(false, host: streamHost, port: streamRGBPort)
     }
 
     func updateStreaming(settings: DepthStreamingSettings, force: Bool) {
         let enabled = settings.enabled
         let host = settings.host.trimmingCharacters(in: .whitespacesAndNewlines)
         let port = settings.port
-        let rgbPort = settings.rgbPort
 
         streamingEnabled = enabled
         streamHost = host
         streamPort = port
-        streamRGBPort = rgbPort
         streamMaxFPS = settings.maxFPS
-        streamIncludeRGB = settings.includeRGB
-        streamJpegQuality = settings.jpegQuality
 
         streamer.setEnabled(enabled, host: host, port: port)
-        rgbStreamer.setEnabled(enabled && streamIncludeRGB, host: host, port: rgbPort)
     }
 
     func latestFrameForStreaming() -> (
         depth: CVPixelBuffer,
         confidence: CVPixelBuffer?,
-        rgb: CVPixelBuffer?,
         intrinsics: simd_float3x3?,
         resolution: CGSize?,
+        cameraTransform: simd_float4x4?,
         timestamp: TimeInterval?
     )? {
         guard let latestDepth else { return nil }
@@ -331,9 +316,9 @@ final class LiDARDepthModel: NSObject, ObservableObject {
         return (
             depth: latestDepth,
             confidence: latestConfidence,
-            rgb: latestRGB,
             intrinsics: latestIntrinsics,
             resolution: latestImageResolution,
+            cameraTransform: latestCameraTransform,
             timestamp: latestTimestamp
         )
     }
@@ -344,7 +329,6 @@ final class LiDARDepthModel: NSObject, ObservableObject {
         if let renderedImage = DepthMapRenderer.render(
             pixelBuffer: latestDepth,
             confidencePixelBuffer: latestConfidence,
-            rgbPixelBuffer: latestRGB,
             targetSize: targetDisplaySize,
             minMeters: fixedMinDepthMeters,
             maxMeters: Float(maxDepthMeters),
@@ -358,32 +342,19 @@ final class LiDARDepthModel: NSObject, ObservableObject {
         let confidenceDescription = latestConfidence.map {
             "\(CVPixelBufferGetWidth($0))x\(CVPixelBufferGetHeight($0))"
         } ?? "-"
-        let rgbDescription = latestRGB.map {
-            "\(CVPixelBufferGetWidth($0))x\(CVPixelBufferGetHeight($0))"
-        } ?? "-"
-
-        debugLine = "depth: \(depthWidth)x\(depthHeight) | rgb: \(rgbDescription) \(rgbSourceLabel) | conf: \(confidenceDescription) | stream: \(streamingEnabled ? "on" : "off")"
+        let floorDescription = latestFloorPlaneFound ? "removed \(latestFloorRemovedPixelCount)" : "searching"
+        debugLine = "depth: \(depthWidth)x\(depthHeight) | conf: \(confidenceDescription) | pose: \(latestTrackingState) | planes: \(latestPlaneAnchorCount) | floor: \(floorDescription) | stream: \(streamingEnabled ? "on" : "off")"
 
         if streamingEnabled {
             streamer.maybeSend(
                 depth: latestDepth,
-                confidence: nil,
-                rgb: nil,
+                confidence: latestConfidence,
                 intrinsics: latestIntrinsics,
                 referenceResolution: latestImageResolution,
+                cameraTransform: latestCameraTransform,
                 timestamp: latestTimestamp ?? CACurrentMediaTime(),
-                maxFPS: streamMaxFPS,
-                includeRGB: streamIncludeRGB,
-                jpegQuality: streamJpegQuality
+                maxFPS: streamMaxFPS
             )
-            if streamIncludeRGB, let latestRGB {
-                rgbStreamer.maybeSend(
-                    rgb: latestRGB,
-                    timestamp: latestTimestamp ?? CACurrentMediaTime(),
-                    maxFPS: streamMaxFPS,
-                    jpegQuality: streamJpegQuality
-                )
-            }
         }
     }
 
@@ -391,10 +362,10 @@ final class LiDARDepthModel: NSObject, ObservableObject {
         guard !isExporting else { return }
 
         do {
-            try recorder.start(maxFPS: 15, includeRGB: true, jpegQuality: 0.55)
+            try recorder.start(maxFPS: 60)
             exportedFile = nil
             isExporting = true
-            exportStatusLine = "Recording depth + RGB frames..."
+            exportStatusLine = "Recording depth + pose frames..."
         } catch {
             exportStatusLine = "Could not start export"
         }
@@ -421,7 +392,6 @@ private enum DepthMapRenderer {
     static func render(
         pixelBuffer: CVPixelBuffer,
         confidencePixelBuffer: CVPixelBuffer?,
-        rgbPixelBuffer: CVPixelBuffer?,
         targetSize: CGSize,
         minMeters: Float,
         maxMeters: Float,

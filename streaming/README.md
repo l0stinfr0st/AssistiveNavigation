@@ -24,8 +24,10 @@ python3 streaming/receive_depth_udp.py --port 5050
 
 Notes:
 - The receiver listens for UDP packets chunked by the iOS app.
-- Depth is Float32 meters (ARKit `depthMap`), typically low-res (e.g. `256×192`) and may include row stride.
+- Depth is Float32 meters (ARKit `sceneDepth.depthMap`), typically low-res (e.g. `256×192`) and may include row stride.
 - Confidence (if present) is UInt8 with values 0/1/2.
+- Packet v3 includes the per-frame ARKit camera-to-world pose matrix from `ARFrame.camera.transform`.
+- RGB is intentionally not captured or streamed; the project is now LiDAR + confidence + pose metadata only.
 
 ### Local export inspection
 
@@ -60,7 +62,8 @@ This writes:
 - `depth/*.npy`
 - `confidence/*.npy`
 - `metadata.json`
-- `rgb/*.jpg` if RGB was included in the export
+
+`metadata.json` includes `perFrameMetadata`, where each frame has `fx`, `fy`, `cx`, `cy`, and flattened row-major pose values `t00` through `t33`.
 
 If needed, override the inferred camera resolution:
 

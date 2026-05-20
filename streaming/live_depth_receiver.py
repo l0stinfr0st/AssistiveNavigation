@@ -1,17 +1,6 @@
 #!/usr/bin/env python3
 """
 Notebook-friendly live UDP receiver for AssistNav LiDAR depth frames.
-
-Usage from a notebook:
-
-    from streaming.live_depth_receiver import LiveDepthReceiver
-    rx = LiveDepthReceiver(port=5050)
-    rx.start()
-    frame = rx.wait_for_frame(timeout=10.0)
-    depth = frame.depth
-    fx, fy, cx, cy = frame.depth_intrinsics()
-
-This is designed to match the extracted/exported data shape your notebook already uses.
 """
 
 from __future__ import annotations
@@ -53,31 +42,42 @@ class LiveDepthFrame:
     confidence: "np.ndarray | None"
     timestamp: float
     intrinsics: tuple[float, ...]
+    camera_transform: tuple[float, ...] | None
     depth_width: int
     depth_height: int
-    rgb_width: int
-    rgb_height: int
     calibration_width: int
     calibration_height: int
 
     def depth_intrinsics(self) -> tuple[float, float, float, float]:
-        # Intrinsics are already aligned with the depth map in our export/live format.
-        fx = float(self.intrinsics[0])
-        fy = float(self.intrinsics[4])
-        cx = float(self.intrinsics[2])
-        cy = float(self.intrinsics[5])
-        return fx, fy, cx, cy
+        return (
+            float(self.intrinsics[0]),
+            float(self.intrinsics[4]),
+            float(self.intrinsics[2]),
+            float(self.intrinsics[5]),
+        )
 
     def notebook_metadata(self) -> dict:
         fx, fy, cx, cy = self.depth_intrinsics()
+        frame_metadata = {
+            "timestamp": self.timestamp,
+            "fx": fx,
+            "fy": fy,
+            "cx": cx,
+            "cy": cy,
+        }
+        if self.camera_transform is not None:
+            for index, value in enumerate(self.camera_transform):
+                row = index // 4
+                column = index % 4
+                frame_metadata[f"t{row}{column}"] = float(value)
+
         return {
             "perFrameIntrinsicCoeffs": [[fx, fy, cx, cy]],
+            "perFrameMetadata": [frame_metadata],
             "dw": self.depth_width,
             "dh": self.depth_height,
             "w": self.calibration_width,
             "h": self.calibration_height,
-            "rgbWidth": self.rgb_width,
-            "rgbHeight": self.rgb_height,
             "timestamps": [self.timestamp],
         }
 
@@ -91,7 +91,7 @@ def parse_frame(frame_bytes: bytes) -> dict:
     off += 2
     (flags,) = struct.unpack_from("<H", frame_bytes, off)
     off += 2
-    (dw, dh, rgbw, rgbh) = struct.unpack_from("<HHHH", frame_bytes, off)
+    (dw, dh, _reserved_w, _reserved_h) = struct.unpack_from("<HHHH", frame_bytes, off)
     off += 8
     if version >= 2:
         (calw, calh) = struct.unpack_from("<HH", frame_bytes, off)
@@ -102,32 +102,32 @@ def parse_frame(frame_bytes: bytes) -> dict:
     off += 8
     intrinsics = struct.unpack_from("<9f", frame_bytes, off)
     off += 36
-    (depth_n, conf_n, jpeg_n) = struct.unpack_from("<III", frame_bytes, off)
+    if version >= 3:
+        raw_camera_transform = struct.unpack_from("<16f", frame_bytes, off)
+        camera_transform = raw_camera_transform if (flags & (1 << 2)) else None
+        off += 64
+    else:
+        camera_transform = None
+    (depth_n, conf_n, _reserved_n) = struct.unpack_from("<III", frame_bytes, off)
     off += 12
 
-    if len(frame_bytes) < off + depth_n + conf_n + jpeg_n:
+    if len(frame_bytes) < off + depth_n + conf_n:
         raise ValueError("Truncated payload")
 
     depth_bytes = frame_bytes[off : off + depth_n]
     off += depth_n
     conf_bytes = frame_bytes[off : off + conf_n]
-    off += conf_n
-    jpeg_bytes = frame_bytes[off : off + jpeg_n]
 
     return {
-        "version": version,
-        "flags": flags,
         "depth_width": dw,
         "depth_height": dh,
-        "rgb_width": rgbw,
-        "rgb_height": rgbh,
         "calibration_width": calw,
         "calibration_height": calh,
         "timestamp": ts,
         "intrinsics": intrinsics,
+        "camera_transform": camera_transform,
         "depth_bytes": depth_bytes,
         "conf_bytes": conf_bytes,
-        "jpeg_bytes": jpeg_bytes,
     }
 
 
@@ -136,8 +136,8 @@ def decode_depth_conf(parsed: dict):
 
     dw = parsed["depth_width"]
     dh = parsed["depth_height"]
-
     depth_bytes = parsed["depth_bytes"]
+
     depth_bpr = len(depth_bytes) // max(1, dh)
     depth_stride = depth_bpr // 4
     depth = np.frombuffer(depth_bytes, dtype=np.float32).reshape((dh, depth_stride))
@@ -147,8 +147,7 @@ def decode_depth_conf(parsed: dict):
     conf_bytes = parsed["conf_bytes"]
     if conf_bytes:
         conf_bpr = len(conf_bytes) // max(1, dh)
-        conf_stride = conf_bpr
-        conf = np.frombuffer(conf_bytes, dtype=np.uint8).reshape((dh, conf_stride))
+        conf = np.frombuffer(conf_bytes, dtype=np.uint8).reshape((dh, conf_bpr))
         conf = conf[:, :dw].copy()
 
     return depth, conf
@@ -171,6 +170,7 @@ class LiveDepthReceiver:
         self._latest_frame: LiveDepthFrame | None = None
         self._frame_count = 0
         self._packet_count = 0
+        self._dropped_partials = 0
         self._last_error: str | None = None
 
     @property
@@ -189,6 +189,11 @@ class LiveDepthReceiver:
             return self._packet_count
 
     @property
+    def dropped_partials(self) -> int:
+        with self._lock:
+            return self._dropped_partials
+
+    @property
     def last_error(self) -> str | None:
         with self._lock:
             return self._last_error
@@ -204,7 +209,7 @@ class LiveDepthReceiver:
         self._sock.bind((self.bind, self.port))
         self._sock.settimeout(1.0)
         if self.debug:
-            print(f"LiveDepthReceiver listening on {self.bind}:{self.port}")
+            print(f"LiveDepthReceiver listening UDP on {self.bind}:{self.port}")
 
         self._thread = threading.Thread(target=self._run, daemon=True)
         self._thread.start()
@@ -268,7 +273,6 @@ class LiveDepthReceiver:
                 self._frames[frame_id] = pf
 
             pf.add(idx, payload)
-
             if not pf.complete():
                 continue
 
@@ -290,10 +294,9 @@ class LiveDepthReceiver:
                 confidence=conf,
                 timestamp=parsed["timestamp"],
                 intrinsics=tuple(parsed["intrinsics"]),
+                camera_transform=parsed["camera_transform"],
                 depth_width=parsed["depth_width"],
                 depth_height=parsed["depth_height"],
-                rgb_width=parsed["rgb_width"],
-                rgb_height=parsed["rgb_height"],
                 calibration_width=parsed["calibration_width"],
                 calibration_height=parsed["calibration_height"],
             )
@@ -310,3 +313,5 @@ class LiveDepthReceiver:
         for fid in list(self._frames.keys()):
             if t - self._frames[fid].created_at > self.timeout_s:
                 del self._frames[fid]
+                with self._lock:
+                    self._dropped_partials += 1

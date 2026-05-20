@@ -1,10 +1,7 @@
 import Foundation
 import Network
 import CoreVideo
-import CoreImage
 import simd
-import ImageIO
-import UniformTypeIdentifiers
 
 @MainActor
 final class DepthStreamingSettings: ObservableObject {
@@ -13,25 +10,23 @@ final class DepthStreamingSettings: ObservableObject {
     @Published var enabled: Bool { didSet { save() } }
     @Published var host: String { didSet { save() } }
     @Published var port: Int { didSet { save() } }
-    @Published var rgbPort: Int { didSet { save() } }
     @Published var maxFPS: Double { didSet { save() } }
-    @Published var includeRGB: Bool { didSet { save() } }
-    @Published var jpegQuality: Double { didSet { save() } }
 
     private init() {
         let d = UserDefaults.standard
         let storedPort = d.integer(forKey: Keys.port)
         let storedMaxFPS = d.double(forKey: Keys.maxFPS)
-        let storedJPEGQuality = d.double(forKey: Keys.jpegQuality)
 
         enabled = d.bool(forKey: Keys.enabled)
         host = d.string(forKey: Keys.host) ?? "192.168.1.2"
         port = storedPort == 0 ? 5050 : storedPort
-        let storedRGBPort = d.integer(forKey: Keys.rgbPort)
-        rgbPort = storedRGBPort == 0 ? 5051 : storedRGBPort
-        maxFPS = storedMaxFPS == 0 ? 30 : storedMaxFPS
-        includeRGB = d.bool(forKey: Keys.includeRGB)
-        jpegQuality = storedJPEGQuality == 0 ? 0.55 : storedJPEGQuality
+        if !d.bool(forKey: Keys.migratedDefaultMaxFPS), storedMaxFPS == 30 {
+            maxFPS = 60
+            d.set(true, forKey: Keys.migratedDefaultMaxFPS)
+            d.set(maxFPS, forKey: Keys.maxFPS)
+        } else {
+            maxFPS = storedMaxFPS == 0 ? 60 : storedMaxFPS
+        }
     }
 
     private func save() {
@@ -39,20 +34,15 @@ final class DepthStreamingSettings: ObservableObject {
         d.set(enabled, forKey: Keys.enabled)
         d.set(host, forKey: Keys.host)
         d.set(port, forKey: Keys.port)
-        d.set(rgbPort, forKey: Keys.rgbPort)
         d.set(maxFPS, forKey: Keys.maxFPS)
-        d.set(includeRGB, forKey: Keys.includeRGB)
-        d.set(jpegQuality, forKey: Keys.jpegQuality)
     }
 
     private enum Keys {
         static let enabled = "depth_streaming.enabled"
         static let host = "depth_streaming.host"
         static let port = "depth_streaming.port"
-        static let rgbPort = "depth_streaming.rgb_port"
         static let maxFPS = "depth_streaming.max_fps"
-        static let includeRGB = "depth_streaming.include_rgb"
-        static let jpegQuality = "depth_streaming.jpeg_quality"
+        static let migratedDefaultMaxFPS = "depth_streaming.max_fps_default_migrated_v2"
     }
 }
 
@@ -60,22 +50,22 @@ final class DepthStreamingSettings: ObservableObject {
 ///
 /// Packet format (little-endian):
 /// - magic: 4 bytes "ANDF"
-/// - version: UInt16 (1)
-/// - flags: UInt16 (bit0: hasConfidence, bit1: hasRGB)
+/// - version: UInt16 (3)
+/// - flags: UInt16 (bit0: hasConfidence, bit2: hasCameraPose)
 /// - depthWidth: UInt16
 /// - depthHeight: UInt16
-/// - rgbWidth: UInt16
-/// - rgbHeight: UInt16
+/// - reservedWidth: UInt16 (0)
+/// - reservedHeight: UInt16 (0)
 /// - calibrationWidth: UInt16
 /// - calibrationHeight: UInt16
 /// - timestamp: Float64 (seconds)
 /// - intrinsics: 9 Float32 (row-major)
+/// - cameraTransform: 16 Float32 (row-major ARKit camera-to-world, v3+)
 /// - depthBytes: UInt32
 /// - confBytes: UInt32
-/// - rgbJpegBytes: UInt32
-/// - payload: depth(Float32 meters) + confidence(UInt8) + jpeg bytes
+/// - reservedBytes: UInt32 (0)
+/// - payload: depth(Float32 meters) + confidence(UInt8)
 ///
-/// Note: UDP has MTU limits; we chunk packets into datagrams with a small chunk header.
 final class DepthFrameStreamer {
     private var conn: NWConnection?
     private var lastSentAt: TimeInterval = 0
@@ -107,13 +97,11 @@ final class DepthFrameStreamer {
     func maybeSend(
         depth: CVPixelBuffer,
         confidence: CVPixelBuffer?,
-        rgb: CVPixelBuffer?,
         intrinsics: simd_float3x3?,
         referenceResolution: CGSize?,
+        cameraTransform: simd_float4x4?,
         timestamp: TimeInterval,
-        maxFPS: Double,
-        includeRGB: Bool,
-        jpegQuality: Double
+        maxFPS: Double
     ) {
         guard let conn else { return }
         let minInterval = 1.0 / max(1.0, maxFPS)
@@ -123,16 +111,14 @@ final class DepthFrameStreamer {
         let packet = DepthPacketBuilder.build(
             depth: depth,
             confidence: confidence,
-            rgb: nil,
             intrinsics: intrinsics,
             referenceResolution: referenceResolution,
-            timestamp: timestamp,
-            jpegQuality: jpegQuality
+            cameraTransform: cameraTransform,
+            timestamp: timestamp
         )
         guard !packet.isEmpty else { return }
 
-        // Chunk to avoid MTU issues.
-        let chunkSize = 1200 // safe-ish UDP payload
+        let chunkSize = 1200
         let totalChunks = Int(ceil(Double(packet.count) / Double(chunkSize)))
         let frameId = UInt32.random(in: 1...UInt32.max)
 
@@ -141,10 +127,10 @@ final class DepthFrameStreamer {
             let end = min(packet.count, start + chunkSize)
             let slice = packet.subdata(in: start..<end)
             var datagram = Data()
-            datagram.append(contentsOf: "CHNK".utf8)              // 4
-            datagram.appendLE(frameId)                             // 4
-            datagram.appendLE(UInt16(totalChunks))                 // 2
-            datagram.appendLE(UInt16(idx))                         // 2
+            datagram.append(contentsOf: "CHNK".utf8)
+            datagram.appendLE(frameId)
+            datagram.appendLE(UInt16(totalChunks))
+            datagram.appendLE(UInt16(idx))
             datagram.append(slice)
             conn.send(content: datagram, completion: .contentProcessed { _ in })
         }
@@ -155,11 +141,10 @@ enum DepthPacketBuilder {
     static func build(
         depth: CVPixelBuffer,
         confidence: CVPixelBuffer?,
-        rgb: CVPixelBuffer?,
         intrinsics: simd_float3x3?,
         referenceResolution: CGSize?,
-        timestamp: TimeInterval,
-        jpegQuality: Double
+        cameraTransform: simd_float4x4?,
+        timestamp: TimeInterval
     ) -> Data {
         guard CVPixelBufferGetPixelFormatType(depth) == kCVPixelFormatType_DepthFloat32 else { return Data() }
 
@@ -167,46 +152,54 @@ enum DepthPacketBuilder {
         let dh = CVPixelBufferGetHeight(depth)
 
         let hasConf = (confidence != nil)
-        let hasRGB = (rgb != nil)
         var flags: UInt16 = 0
         if hasConf { flags |= 1 << 0 }
-        if hasRGB { flags |= 1 << 1 }
+        if cameraTransform != nil { flags |= 1 << 2 }
 
-        let rgbW = rgb.map(CVPixelBufferGetWidth) ?? 0
-        let rgbH = rgb.map(CVPixelBufferGetHeight) ?? 0
         let calibrationW = UInt16(max(0, min(65535, Int(referenceResolution?.width ?? CGFloat(dw)))))
         let calibrationH = UInt16(max(0, min(65535, Int(referenceResolution?.height ?? CGFloat(dh)))))
 
         let depthBytes = depthToData(depth)
         let confBytes = confidence.flatMap(confidenceToData) ?? Data()
-        let jpeg = rgb.flatMap { rgbToJPEG($0, quality: jpegQuality) } ?? Data()
 
         var out = Data()
         out.append(contentsOf: "ANDF".utf8)
-        out.appendLE(UInt16(2)) // version
+        out.appendLE(UInt16(3)) // version
         out.appendLE(flags)
         out.appendLE(UInt16(dw))
         out.appendLE(UInt16(dh))
-        out.appendLE(UInt16(rgbW))
-        out.appendLE(UInt16(rgbH))
+        out.appendLE(UInt16(0))
+        out.appendLE(UInt16(0))
         out.appendLE(calibrationW)
         out.appendLE(calibrationH)
         out.appendLE(timestamp)
 
         let K = intrinsics ?? matrix_identity_float3x3
-        for r in 0..<3 {
-            for c in 0..<3 {
-                out.appendLE(Float(K[r][c]))
-            }
-        }
+        appendMatrix3x3RowMajor(K, to: &out)
+        appendMatrix4x4RowMajor(cameraTransform ?? matrix_identity_float4x4, to: &out)
 
         out.appendLE(UInt32(depthBytes.count))
         out.appendLE(UInt32(confBytes.count))
-        out.appendLE(UInt32(jpeg.count))
+        out.appendLE(UInt32(0))
         out.append(depthBytes)
         out.append(confBytes)
-        out.append(jpeg)
         return out
+    }
+
+    private static func appendMatrix3x3RowMajor(_ matrix: simd_float3x3, to data: inout Data) {
+        for row in 0..<3 {
+            for column in 0..<3 {
+                data.appendLE(Float(matrix[column][row]))
+            }
+        }
+    }
+
+    private static func appendMatrix4x4RowMajor(_ matrix: simd_float4x4, to data: inout Data) {
+        for row in 0..<4 {
+            for column in 0..<4 {
+                data.appendLE(Float(matrix[column][row]))
+            }
+        }
     }
 
     private static func depthToData(_ pb: CVPixelBuffer) -> Data {
@@ -228,87 +221,6 @@ enum DepthPacketBuilder {
         return Data(bytes: base, count: bytesPerRow * height)
     }
 
-    static func rgbToJPEG(_ pb: CVPixelBuffer, quality: Double) -> Data? {
-        // capturedImage is typically kCVPixelFormatType_420YpCbCr8BiPlanarFullRange.
-        let ci = CIImage(cvPixelBuffer: pb)
-        let ctx = CIContext(options: [.cacheIntermediates: false])
-        guard let cg = ctx.createCGImage(ci, from: ci.extent) else { return nil }
-
-        let data = NSMutableData()
-        guard let dest = CGImageDestinationCreateWithData(data, UTType.jpeg.identifier as CFString, 1, nil) else { return nil }
-        CGImageDestinationAddImage(dest, cg, [kCGImageDestinationLossyCompressionQuality as String: max(0.1, min(0.95, quality))] as CFDictionary)
-        guard CGImageDestinationFinalize(dest) else { return nil }
-        return data as Data
-    }
-}
-
-final class RGBFrameStreamer {
-    private var conn: NWConnection?
-    private var lastSentAt: TimeInterval = 0
-
-    func setEnabled(_ enabled: Bool, host: String, port: Int) {
-        if enabled {
-            start(host: host, port: port)
-        } else {
-            stop()
-        }
-    }
-
-    func maybeSend(
-        rgb: CVPixelBuffer,
-        timestamp: TimeInterval,
-        maxFPS: Double,
-        jpegQuality: Double
-    ) {
-        guard let conn else { return }
-        let minInterval = 1.0 / max(1.0, maxFPS)
-        if timestamp - lastSentAt < minInterval { return }
-        lastSentAt = timestamp
-
-        guard let jpeg = DepthPacketBuilder.rgbToJPEG(rgb, quality: jpegQuality) else { return }
-
-        var packet = Data()
-        packet.append(contentsOf: "ANRG".utf8)
-        packet.appendLE(UInt16(1))
-        packet.appendLE(UInt16(0))
-        packet.appendLE(UInt16(CVPixelBufferGetWidth(rgb)))
-        packet.appendLE(UInt16(CVPixelBufferGetHeight(rgb)))
-        packet.appendLE(timestamp)
-        packet.appendLE(UInt32(jpeg.count))
-        packet.append(jpeg)
-
-        let chunkSize = 1200
-        let totalChunks = Int(ceil(Double(packet.count) / Double(chunkSize)))
-        let frameId = UInt32.random(in: 1...UInt32.max)
-
-        for idx in 0..<totalChunks {
-            let start = idx * chunkSize
-            let end = min(packet.count, start + chunkSize)
-            let slice = packet.subdata(in: start..<end)
-            var datagram = Data()
-            datagram.append(contentsOf: "RCHK".utf8)
-            datagram.appendLE(frameId)
-            datagram.appendLE(UInt16(totalChunks))
-            datagram.appendLE(UInt16(idx))
-            datagram.append(slice)
-            conn.send(content: datagram, completion: .contentProcessed { _ in })
-        }
-    }
-
-    private func start(host: String, port: Int) {
-        stop()
-        guard let p = NWEndpoint.Port(rawValue: UInt16(max(1, min(65535, port)))) else { return }
-        let c = NWConnection(host: NWEndpoint.Host(host), port: p, using: .udp)
-        c.stateUpdateHandler = { _ in }
-        c.start(queue: .global(qos: .userInitiated))
-        conn = c
-    }
-
-    private func stop() {
-        conn?.cancel()
-        conn = nil
-        lastSentAt = 0
-    }
 }
 
 private extension Data {

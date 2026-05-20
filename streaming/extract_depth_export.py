@@ -6,11 +6,11 @@ Output layout:
   extracted/
     depth/00000.npy
     confidence/00000.npy
-    rgb/00000.jpg              # only if RGB exists in the export
     metadata.json
 
 The metadata is shaped to be compatible with the user's Record3D-style notebook:
   - perFrameIntrinsicCoeffs: [[fx, fy, cx, cy], ...]
+  - perFrameMetadata: [{fx, fy, cx, cy, t00, t01, ... t33}, ...]
   - dw, dh
   - w, h
 
@@ -20,6 +20,7 @@ Extra fields are included as well for future live-streaming parity.
 import argparse
 import json
 import math
+import shutil
 import struct
 from pathlib import Path
 
@@ -58,6 +59,12 @@ def parse_payload(payload: bytes):
     off += 8
     intrinsics = struct.unpack_from("<9f", payload, off)
     off += 36
+    if version >= 3:
+        raw_camera_transform = struct.unpack_from("<16f", payload, off)
+        camera_transform = raw_camera_transform if (flags & (1 << 2)) else None
+        off += 64
+    else:
+        camera_transform = None
     (depth_n, conf_n, jpeg_n) = struct.unpack_from("<III", payload, off)
     off += 12
 
@@ -78,6 +85,7 @@ def parse_payload(payload: bytes):
         "calibration_height": calh,
         "timestamp": ts,
         "intrinsics": intrinsics,
+        "camera_transform": camera_transform,
         "depth_bytes": depth_bytes,
         "conf_bytes": conf_bytes,
         "jpeg_bytes": jpeg_bytes,
@@ -151,6 +159,22 @@ def infer_camera_resolution(per_frame_coeffs, depth_width, depth_height):
     return inferred_w, inferred_h
 
 
+def flattened_frame_metadata(timestamp, fx, fy, cx, cy, camera_transform):
+    row = {
+        "timestamp": timestamp,
+        "fx": fx,
+        "fy": fy,
+        "cx": cx,
+        "cy": cy,
+    }
+    if camera_transform is not None:
+        for index, value in enumerate(camera_transform):
+            matrix_row = index // 4
+            matrix_column = index % 4
+            row[f"t{matrix_row}{matrix_column}"] = float(value)
+    return row
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("path", type=Path)
@@ -172,21 +196,20 @@ def main():
     out_dir = args.out or export_path.with_name(f"{export_path.stem}_extracted")
     depth_dir = out_dir / "depth"
     conf_dir = out_dir / "confidence"
-    rgb_dir = out_dir / "rgb"
     depth_dir.mkdir(parents=True, exist_ok=True)
     conf_dir.mkdir(parents=True, exist_ok=True)
+    shutil.rmtree(out_dir / "rgb", ignore_errors=True)
 
     header = None
     frame_count = 0
     per_frame_intrinsics = []
+    per_frame_metadata = []
+    camera_pose_matrices = []
     timestamps = []
     depth_width = None
     depth_height = None
-    rgb_width = 0
-    rgb_height = 0
     calibration_width = 0
     calibration_height = 0
-    has_rgb = False
 
     for item in iter_export_frames(export_path):
         if item[0] == "header":
@@ -203,23 +226,32 @@ def main():
         if conf is not None:
             np.save(conf_dir / f"{frame_index - 1:05d}.npy", conf)
 
-        if parsed["jpeg_bytes"]:
-            rgb_dir.mkdir(parents=True, exist_ok=True)
-            (rgb_dir / f"{frame_index - 1:05d}.jpg").write_bytes(parsed["jpeg_bytes"])
-            has_rgb = True
-
         K = parsed["intrinsics"]
         fx = float(K[0])
         fy = float(K[4])
-        cx = float(K[2])
-        cy = float(K[5])
+        if parsed["version"] >= 3:
+            cx = float(K[2])
+            cy = float(K[5])
+        else:
+            # Older app builds accidentally serialized simd matrices column-major.
+            cx = float(K[6])
+            cy = float(K[7])
         per_frame_intrinsics.append([fx, fy, cx, cy])
+        per_frame_metadata.append(
+            flattened_frame_metadata(
+                parsed["timestamp"],
+                fx,
+                fy,
+                cx,
+                cy,
+                parsed["camera_transform"],
+            )
+        )
+        camera_pose_matrices.append(parsed["camera_transform"])
         timestamps.append(parsed["timestamp"])
 
         depth_width = parsed["depth_width"]
         depth_height = parsed["depth_height"]
-        rgb_width = parsed["rgb_width"]
-        rgb_height = parsed["rgb_height"]
         calibration_width = parsed["calibration_width"]
         calibration_height = parsed["calibration_height"]
 
@@ -249,17 +281,19 @@ def main():
         "fps": fps,
         "timestamps": timestamps,
         "perFrameIntrinsicCoeffs": per_frame_intrinsics,
+        "perFrameMetadata": per_frame_metadata,
+        "cameraPoseMatrices": camera_pose_matrices,
+        "cameraPoseFormat": "row-major 4x4 ARKit camera-to-world transform; null for pre-v3 exports",
+        "worldCoordinateSystem": "ARKit gravity-aligned right-handed world coordinates",
         "dw": depth_width,
         "dh": depth_height,
         "w": camera_width,
         "h": camera_height,
-        "rgbWidth": rgb_width,
-        "rgbHeight": rgb_height,
-        "hasRGB": has_rgb,
+        "hasRGB": False,
         "hasConfidence": True,
         "depthDir": "depth",
         "confidenceDir": "confidence",
-        "rgbDir": "rgb" if has_rgb else None,
+        "rgbDir": None,
         "notes": {
             "cameraResolutionWasInferred": not (args.camera_width and args.camera_height),
             "calibrationResolutionFromExport": calibration_width > 0 and calibration_height > 0,

@@ -16,15 +16,13 @@ final class DepthFileRecorder {
     private var outputURL: URL?
     private var frameCount = 0
     private var lastWrittenTimestamp: TimeInterval = 0
-    private var maxFPS: Double = 15
-    private var includeRGB = false
-    private var jpegQuality = 0.55
+    private var maxFPS: Double = 60
 
     var isRecording: Bool {
         queue.sync { fileHandle != nil }
     }
 
-    func start(maxFPS: Double = 15, includeRGB: Bool = false, jpegQuality: Double = 0.55) throws {
+    func start(maxFPS: Double = 60) throws {
         try queue.sync {
             try stopLocked()
 
@@ -45,12 +43,10 @@ final class DepthFileRecorder {
             self.frameCount = 0
             self.lastWrittenTimestamp = 0
             self.maxFPS = maxFPS
-            self.includeRGB = includeRGB
-            self.jpegQuality = jpegQuality
 
             var header = Data()
             header.append(contentsOf: "ANPK".utf8)
-            header.appendLE(UInt16(1))
+            header.appendLE(UInt16(2))
             header.appendLE(UInt16(0))
             try handle.write(contentsOf: header)
         }
@@ -59,9 +55,9 @@ final class DepthFileRecorder {
     func appendFrame(
         depth: CVPixelBuffer,
         confidence: CVPixelBuffer?,
-        rgb: CVPixelBuffer?,
         intrinsics: simd_float3x3?,
         referenceResolution: CGSize?,
+        cameraTransform: simd_float4x4?,
         timestamp: TimeInterval
     ) {
         queue.async {
@@ -75,11 +71,10 @@ final class DepthFileRecorder {
             let packet = DepthPacketBuilder.build(
                 depth: depth,
                 confidence: confidence,
-                rgb: self.includeRGB ? rgb : nil,
                 intrinsics: intrinsics,
                 referenceResolution: referenceResolution,
-                timestamp: timestamp,
-                jpegQuality: self.jpegQuality
+                cameraTransform: cameraTransform,
+                timestamp: timestamp
             )
             guard !packet.isEmpty else { return }
 

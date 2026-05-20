@@ -13,7 +13,7 @@ struct LiDARCaptureTestView: View {
                 HStack(spacing: 10) {
                     statusPill(
                         title: "Depth Test",
-                        value: "Live ARKit scene depth"
+                        value: "ARKit depth + pose"
                     )
 
                     statusPill(
@@ -81,9 +81,6 @@ private struct LiDARStreamingSettingsView: View {
                 TextField("Port", value: $streaming.port, format: .number)
                     .keyboardType(.numberPad)
 
-                TextField("RGB Port", value: $streaming.rgbPort, format: .number)
-                    .keyboardType(.numberPad)
-
                 HStack {
                     Text("Max FPS")
                     Spacer()
@@ -91,24 +88,10 @@ private struct LiDARStreamingSettingsView: View {
                         .foregroundStyle(.secondary)
                 }
                 Slider(value: $streaming.maxFPS, in: 1...60, step: 1)
-
-                Toggle("Send separate RGB stream", isOn: $streaming.includeRGB)
-
-                if streaming.includeRGB {
-                    HStack {
-                        Text("JPEG quality")
-                        Spacer()
-                        Text("\(streaming.jpegQuality, format: .number.precision(.fractionLength(2)))")
-                            .foregroundStyle(.secondary)
-                    }
-                    Slider(value: $streaming.jpegQuality, in: 0.1...0.9, step: 0.05)
-                }
             }
 
             Section("Receiver") {
                 Text("On your computer, run `python3 streaming/receive_depth_udp.py --port \(streaming.port)` from this repo.")
-                    .font(.footnote)
-                Text("For the separate 0.5x RGB feed, run `python3 streaming/receive_rgb_udp.py --port \(streaming.rgbPort)`.")
                     .font(.footnote)
             }
         }
