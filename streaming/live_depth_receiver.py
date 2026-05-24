@@ -58,27 +58,36 @@ class LiveDepthFrame:
 
     def notebook_metadata(self) -> dict:
         fx, fy, cx, cy = self.depth_intrinsics()
-        frame_metadata = {
-            "timestamp": self.timestamp,
-            "fx": fx,
-            "fy": fy,
-            "cx": cx,
-            "cy": cy,
-        }
-        if self.camera_transform is not None:
-            for index, value in enumerate(self.camera_transform):
-                row = index // 4
-                column = index % 4
-                frame_metadata[f"t{row}{column}"] = float(value)
-
         return {
-            "perFrameIntrinsicCoeffs": [[fx, fy, cx, cy]],
-            "perFrameMetadata": [frame_metadata],
-            "dw": self.depth_width,
-            "dh": self.depth_height,
-            "w": self.calibration_width,
-            "h": self.calibration_height,
-            "timestamps": [self.timestamp],
+            "format": "assistnav-extracted-v2-live-frame",
+            "frameCount": 1,
+            "depth": {
+                "width": self.depth_width,
+                "height": self.depth_height,
+                "dtype": "float32",
+                "units": "meters",
+            },
+            "confidence": {
+                "present": self.confidence is not None,
+                "dtype": "uint8",
+            },
+            "camera": {
+                "width": self.calibration_width,
+                "height": self.calibration_height,
+                "intrinsics": {
+                    "fx": fx,
+                    "fy": fy,
+                    "cx": cx,
+                    "cy": cy,
+                },
+            },
+            "frames": [
+                {
+                    "timestamp": self.timestamp,
+                    "pose": None if self.camera_transform is None else [float(v) for v in self.camera_transform],
+                }
+            ],
+            "poseFormat": "row-major 4x4 ARKit camera-to-world transform; null when unavailable",
         }
 
 

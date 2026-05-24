@@ -8,13 +8,8 @@ Output layout:
     confidence/00000.npy
     metadata.json
 
-The metadata is shaped to be compatible with the user's Record3D-style notebook:
-  - perFrameIntrinsicCoeffs: [[fx, fy, cx, cy], ...]
-  - perFrameMetadata: [{fx, fy, cx, cy, t00, t01, ... t33}, ...]
-  - dw, dh
-  - w, h
-
-Extra fields are included as well for future live-streaming parity.
+The metadata stores session-level camera calibration once, then per-frame
+timestamp and pose. Depth/confidence samples remain as separate .npy files.
 """
 
 import argparse
@@ -137,16 +132,14 @@ def decode_confidence(parsed, np):
     return conf[:, :dw].copy()
 
 
-def infer_camera_resolution(per_frame_coeffs, depth_width, depth_height):
+def infer_camera_resolution(intrinsics, depth_width, depth_height):
     # Record3D-style metadata stores intrinsics at the camera resolution, then
     # the notebook scales them down to depth resolution using dw/w and dh/h.
     #
     # Our current export does not yet persist camera image resolution, so infer
     # it from the optical center: cx ~= w/2 and cy ~= h/2.
-    cxs = [row[2] for row in per_frame_coeffs]
-    cys = [row[3] for row in per_frame_coeffs]
-    cx = sorted(cxs)[len(cxs) // 2]
-    cy = sorted(cys)[len(cys) // 2]
+    cx = intrinsics["cx"]
+    cy = intrinsics["cy"]
 
     inferred_w = int(round(cx * 2.0))
     inferred_h = int(round(cy * 2.0))
@@ -159,20 +152,11 @@ def infer_camera_resolution(per_frame_coeffs, depth_width, depth_height):
     return inferred_w, inferred_h
 
 
-def flattened_frame_metadata(timestamp, fx, fy, cx, cy, camera_transform):
-    row = {
+def frame_metadata(timestamp, camera_transform):
+    return {
         "timestamp": timestamp,
-        "fx": fx,
-        "fy": fy,
-        "cx": cx,
-        "cy": cy,
+        "pose": None if camera_transform is None else [float(v) for v in camera_transform],
     }
-    if camera_transform is not None:
-        for index, value in enumerate(camera_transform):
-            matrix_row = index // 4
-            matrix_column = index % 4
-            row[f"t{matrix_row}{matrix_column}"] = float(value)
-    return row
 
 
 def main():
@@ -202,14 +186,14 @@ def main():
 
     header = None
     frame_count = 0
-    per_frame_intrinsics = []
-    per_frame_metadata = []
-    camera_pose_matrices = []
+    camera_intrinsics = None
+    frames_metadata = []
     timestamps = []
     depth_width = None
     depth_height = None
     calibration_width = 0
     calibration_height = 0
+    has_confidence = False
 
     for item in iter_export_frames(export_path):
         if item[0] == "header":
@@ -224,6 +208,7 @@ def main():
 
         np.save(depth_dir / f"{frame_index - 1:05d}.npy", depth)
         if conf is not None:
+            has_confidence = True
             np.save(conf_dir / f"{frame_index - 1:05d}.npy", conf)
 
         K = parsed["intrinsics"]
@@ -236,18 +221,14 @@ def main():
             # Older app builds accidentally serialized simd matrices column-major.
             cx = float(K[6])
             cy = float(K[7])
-        per_frame_intrinsics.append([fx, fy, cx, cy])
-        per_frame_metadata.append(
-            flattened_frame_metadata(
-                parsed["timestamp"],
-                fx,
-                fy,
-                cx,
-                cy,
-                parsed["camera_transform"],
-            )
-        )
-        camera_pose_matrices.append(parsed["camera_transform"])
+        if camera_intrinsics is None:
+            camera_intrinsics = {
+                "fx": fx,
+                "fy": fy,
+                "cx": cx,
+                "cy": cy,
+            }
+        frames_metadata.append(frame_metadata(parsed["timestamp"], parsed["camera_transform"]))
         timestamps.append(parsed["timestamp"])
 
         depth_width = parsed["depth_width"]
@@ -268,36 +249,44 @@ def main():
         camera_width = calibration_width
         camera_height = calibration_height
     else:
-        camera_width, camera_height = infer_camera_resolution(per_frame_intrinsics, depth_width, depth_height)
+        camera_width, camera_height = infer_camera_resolution(camera_intrinsics, depth_width, depth_height)
 
     duration = max(0.0, timestamps[-1] - timestamps[0]) if len(timestamps) > 1 else 0.0
     fps = 0.0 if duration == 0 else frame_count / duration
 
     metadata = {
-        "format": "assistnav-extracted-v1",
+        "format": "assistnav-extracted-v2",
         "sourceExport": str(export_path),
         "exportVersion": header["version"] if header else 1,
         "frameCount": frame_count,
         "fps": fps,
-        "timestamps": timestamps,
-        "perFrameIntrinsicCoeffs": per_frame_intrinsics,
-        "perFrameMetadata": per_frame_metadata,
-        "cameraPoseMatrices": camera_pose_matrices,
-        "cameraPoseFormat": "row-major 4x4 ARKit camera-to-world transform; null for pre-v3 exports",
+        "depth": {
+            "width": depth_width,
+            "height": depth_height,
+            "dir": "depth",
+            "dtype": "float32",
+            "units": "meters",
+        },
+        "confidence": {
+            "present": has_confidence,
+            "dir": "confidence",
+            "dtype": "uint8",
+            "values": "0/1/2 ARKit confidence when present",
+        },
+        "camera": {
+            "width": camera_width,
+            "height": camera_height,
+            "intrinsics": camera_intrinsics,
+        },
+        "frames": frames_metadata,
+        "poseFormat": "row-major 4x4 ARKit camera-to-world transform; null for pre-v3 exports",
         "worldCoordinateSystem": "ARKit gravity-aligned right-handed world coordinates",
-        "dw": depth_width,
-        "dh": depth_height,
-        "w": camera_width,
-        "h": camera_height,
         "hasRGB": False,
-        "hasConfidence": True,
-        "depthDir": "depth",
-        "confidenceDir": "confidence",
-        "rgbDir": None,
         "notes": {
             "cameraResolutionWasInferred": not (args.camera_width and args.camera_height),
             "calibrationResolutionFromExport": calibration_width > 0 and calibration_height > 0,
             "inferenceHint": "Override with --camera-width/--camera-height if you know the exact capture resolution.",
+            "compatibility": "v1 metadata duplicated timestamps, intrinsics, and pose; v2 stores intrinsics once and one frame row per timestamp/pose.",
         },
     }
 
