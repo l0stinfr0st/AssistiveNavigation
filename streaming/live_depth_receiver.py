@@ -41,7 +41,7 @@ from typing import Optional
 
 import numpy as np
 
-# ── packet format constants ──────────────────────────────────────────────────
+# packet format constants
 _ANDF_HDR = struct.Struct("<4sHHHHHHHHd9f16fIII")   # 140 bytes
 _CHNK_HDR = struct.Struct("<4sIHH")                  # 12 bytes
 
@@ -50,14 +50,14 @@ _CHNK_HDR = struct.Struct("<4sIHH")                  # 12 bytes
 class LiveDepthFrame:
     """One decoded depth frame received from the iOS app."""
 
-    depth: np.ndarray                    # float32, shape (H, W), metres
-    confidence: Optional[np.ndarray]     # uint8,   shape (H, W), 0/1/2 — or None
-    intrinsics: np.ndarray               # float32, shape (3, 3), at calibration resolution
-    camera_transform: Optional[np.ndarray]  # float64, shape (4, 4), ARKit cam→world — or None
-    timestamp: float                     # seconds
+    depth: np.ndarray                    
+    confidence: Optional[np.ndarray]     
+    intrinsics: np.ndarray               
+    camera_transform: Optional[np.ndarray] 
+    timestamp: float                     
     depth_width: int
     depth_height: int
-    calibration_width: int               # RGB resolution the intrinsics are expressed at
+    calibration_width: int               
     calibration_height: int
 
     def depth_intrinsics(self):
@@ -67,22 +67,6 @@ class LiveDepthFrame:
 
 
 class LiveDepthReceiver:
-    """
-    Listens on a UDP socket for CHNK-wrapped ANDF depth packets.
-
-    Usage::
-
-        receiver = LiveDepthReceiver(port=5050)
-        receiver.start()
-        frame = receiver.wait_for_frame(timeout=20.0)   # block until first frame
-        ...
-        while True:
-            if receiver.frame_count != last_count:
-                last_count = receiver.frame_count
-                process(receiver.latest_frame)
-        receiver.stop()
-    """
-
     def __init__(
         self,
         bind: str = "0.0.0.0",
@@ -105,9 +89,9 @@ class LiveDepthReceiver:
 
         # Chunk reassembly: frameId → {chunkIdx: bytes}
         self._pending: dict = {}
-        self._pending_total: dict = {}   # frameId → totalChunks
+        self._pending_total: dict = {} 
 
-    # ── public API ────────────────────────────────────────────────────────────
+    # public API
 
     @property
     def latest_frame(self) -> Optional[LiveDepthFrame]:
@@ -150,7 +134,7 @@ class LiveDepthReceiver:
             "Check that LiDAR streaming is enabled in the app and the host IP is correct."
         )
 
-    # ── internal receive loop ─────────────────────────────────────────────────
+    # internal receive loop
 
     def _recv_loop(self) -> None:
         sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -194,7 +178,7 @@ class LiveDepthReceiver:
 
         if chunk_idx >= total_chunks:
             return
-
+        
         # Evict oldest incomplete frame if buffer is full
         if frame_id not in self._pending and len(self._pending) >= self._max_incomplete:
             oldest = min(self._pending.keys())
@@ -230,7 +214,7 @@ class LiveDepthReceiver:
             )
 
 
-# ── ANDF packet parser (module-level so it can be called directly) ────────────
+# ANDF packet parser (module-level so it can be called directly)
 
 def _parse_andf(data: bytes, debug: bool = False) -> Optional[LiveDepthFrame]:
     """
@@ -244,16 +228,12 @@ def _parse_andf(data: bytes, debug: bool = False) -> Optional[LiveDepthFrame]:
     offset = _ANDF_HDR.size
 
     magic       = vals[0]
-    # vals[1]   = version (unused beyond magic check)
     flags       = vals[2]
     dw          = int(vals[3])
     dh          = int(vals[4])
-    # vals[5,6] = reserved dimensions
     cal_w       = int(vals[7]) or dw
     cal_h       = int(vals[8]) or dh
     timestamp   = float(vals[9])
-    # vals[10:19] = intrinsics row-major  (K[0,0] K[0,1] K[0,2]  K[1,0] K[1,1] K[1,2]  K[2,0] K[2,1] K[2,2])
-    # vals[19:35] = transform row-major   (T[0,0]…T[3,3])
     depth_bytes = int(vals[35])
     conf_bytes  = int(vals[36])
 
@@ -269,14 +249,13 @@ def _parse_andf(data: bytes, debug: bool = False) -> Optional[LiveDepthFrame]:
     has_confidence = bool(flags & 0x01)
     has_pose       = bool(flags & 0x04)
 
-    # ── depth (Float32, rows may be padded) ──────────────────────────────────
-    # CVPixelBuffer rows can include alignment padding: bytes_per_row >= dw*4
+    # depth
     if dh > 0 and depth_bytes % dh == 0:
         bytes_per_row_d = depth_bytes // dh
     else:
-        bytes_per_row_d = dw * 4   # no padding fallback
-
-    stride_d = bytes_per_row_d // 4  # float32s per row (>= dw)
+        bytes_per_row_d = dw * 4
+        
+    stride_d = bytes_per_row_d // 4 
 
     depth_raw = np.frombuffer(data, dtype="<f4", count=depth_bytes // 4, offset=offset)
     if len(depth_raw) < dh * stride_d:
@@ -284,7 +263,7 @@ def _parse_andf(data: bytes, debug: bool = False) -> Optional[LiveDepthFrame]:
     depth_img = depth_raw.reshape(dh, stride_d)[:, :dw].copy().astype(np.float32)
     offset += depth_bytes
 
-    # ── confidence (UInt8, rows may be padded) ───────────────────────────────
+    # confidence
     conf_img = None
     if has_confidence and conf_bytes > 0:
         if dh > 0 and conf_bytes % dh == 0:
@@ -297,12 +276,11 @@ def _parse_andf(data: bytes, debug: bool = False) -> Optional[LiveDepthFrame]:
             conf_img = conf_raw.reshape(dh, bytes_per_row_c)[:, :dw].copy()
     offset += conf_bytes
 
-    # ── intrinsics (row-major 3×3 written by appendMatrix3x3RowMajor) ────────
-    # Swift writes matrix[column][row] in row-then-column order, which produces
-    # standard row-major layout: [fx, 0, cx,  0, fy, cy,  0, 0, 1]
+    # intrinsics
+
     K = np.array(vals[10:19], dtype=np.float32).reshape(3, 3)
 
-    # ── camera-to-world transform (row-major 4×4) ─────────────────────────────
+    # camera-to-world transform
     T = None
     if has_pose:
         T = np.array(vals[19:35], dtype=np.float64).reshape(4, 4)
