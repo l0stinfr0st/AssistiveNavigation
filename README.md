@@ -233,7 +233,7 @@ Live run through a domestic environment. The sweep correctly identifies and soni
 
 https://github.com/user-attachments/assets/7c94fdef-f8e9-41ea-aa6a-a6bf8deaa876
 
-Live run with both the user and a second person moving simultaneously. The tracker maintains separate IDs for both subjects and fires independent spatialized click cues, demonstrating multi-object tracking under real walking conditions.
+Live run with both the user and a second person moving simultaneously. The tracker is able to distinguish the static objects from the moving person and created the appropriate temporal audio cues
 
 ---
 
