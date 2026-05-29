@@ -213,25 +213,25 @@ The videos below demonstrate the system running on a LiDAR-capable iPhone. Audio
 
 ### Pre-recorded pipeline (offline)
 
-https://github.com/user-attachments/assets/pre_recorded_example.mp4
+https://github.com/user-attachments/assets/9b7281c7-9c5c-4659-9e54-b29757bb32b2
 
 Full end-to-end run on a recorded `.andepth` export. Shows the spatial sweep sonification, hazard masking, cluster tracking, and moving-object click cues across a complete sequence of depth frames.
 
 ### Live: stationary subject
 
-https://github.com/user-attachments/assets/standing_example.mp4
+https://github.com/user-attachments/assets/c8df476a-9b0d-46b3-ab2f-0879861071fa
 
 Live UDP streaming with the operator walking towards a stationary user. The tracked cluster transitions from static to moving as the operator approaches, and the click cue rate increases with proximity.
 
 ### Live: walking around the house
 
-https://github.com/user-attachments/assets/walking_around_house.mp4
+https://github.com/user-attachments/assets/0107235a-ca14-4416-b60b-02748b499494
 
 Live run through a domestic environment. The sweep correctly identifies and sonifies nearby walls, furniture, and doorways. Some stationary objects are intermittently misclassified as moving — a known limitation of the current camera-motion gating under fast panning.
 
 ### Live: two people walking
 
-https://github.com/user-attachments/assets/both_walking.mp4
+https://github.com/user-attachments/assets/7c94fdef-f8e9-41ea-aa6a-a6bf8deaa876
 
 Live run with both the user and a second person moving simultaneously. The tracker maintains separate IDs for both subjects and fires independent spatialized click cues, demonstrating multi-object tracking under real walking conditions.
 
