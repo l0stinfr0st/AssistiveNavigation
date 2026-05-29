@@ -207,6 +207,36 @@ HRIR Profiles/    SOFA HRIR assets for spatial audio
 supabase/         Database schema for app auth/reports/sessions
 ```
 
+## Results
+
+The videos below demonstrate the system running on a LiDAR-capable iPhone. Audio was monitored through headphones during all recordings.
+
+### Pre-recorded pipeline (offline)
+
+https://github.com/user-attachments/assets/pre_recorded_example.mp4
+
+Full end-to-end run on a recorded `.andepth` export. Shows the spatial sweep sonification, hazard masking, cluster tracking, and moving-object click cues across a complete sequence of depth frames.
+
+### Live: stationary subject
+
+https://github.com/user-attachments/assets/standing_example.mp4
+
+Live UDP streaming with the operator walking towards a stationary user. The tracked cluster transitions from static to moving as the operator approaches, and the click cue rate increases with proximity.
+
+### Live: walking around the house
+
+https://github.com/user-attachments/assets/walking_around_house.mp4
+
+Live run through a domestic environment. The sweep correctly identifies and sonifies nearby walls, furniture, and doorways. Some stationary objects are intermittently misclassified as moving — a known limitation of the current camera-motion gating under fast panning.
+
+### Live: two people walking
+
+https://github.com/user-attachments/assets/both_walking.mp4
+
+Live run with both the user and a second person moving simultaneously. The tracker maintains separate IDs for both subjects and fires independent spatialized click cues, demonstrating multi-object tracking under real walking conditions.
+
+---
+
 ## Notes
 
 - Use a real LiDAR device. The simulator will not provide ARKit scene depth.
